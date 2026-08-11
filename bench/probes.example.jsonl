@@ -1,0 +1,5 @@
+{"id":"P-01","query":"커밋 메시지 규칙이 뭐였지?","expected":["feedback_commit_style"],"expected_signals":["Co-Authored-By","트레일러"],"difficulty":"easy","category":"feedback"}
+{"id":"P-02","query":"이 프로젝트 로깅은 어떤 라이브러리 쓰기로 했지?","expected":["decision_logging_stack"],"expected_signals":["structlog","JSON 로그"],"difficulty":"easy","category":"decision"}
+{"id":"P-03","query":"배포하다 막혔던 이슈 어떻게 풀었더라","expected":["issue_deploy_timeout"],"expected_signals":["헬스체크","타임아웃 90초"],"difficulty":"medium","category":"issue"}
+{"id":"P-04","query":"새 API 엔드포인트 추가할 건데 우리 컨벤션대로 짜줘","expected":["arch_api_layering","feedback_commit_style"],"expected_signals":["Pydantic","라우터 분리"],"difficulty":"medium","category":"arch"}
+{"id":"P-05","query":"CI에서 테스트 병렬 실행 가능한가?","expected":["lesson_ci_parallel_flake"],"expected_signals":["DB 픽스처 충돌","-p no:randomly"],"difficulty":"hard","category":"lesson"}

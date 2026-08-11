@@ -1,0 +1,12 @@
+# 메모리 내용은 개인 데이터 — 도구만 배포한다
+.sy-memory/
+memory/
+
+# 설치기가 남기는 백업
+*.sy-backup
+.claude/settings.json
+.claude/settings.local.json
+
+__pycache__/
+*.pyc
+.DS_Store
