@@ -97,7 +97,27 @@ def render(sections: list[tuple[str, Path, list[tuple[str, str]], int]], budget:
         body = "\n".join(parts)
         if len(body) <= budget:
             return body
-    return body  # floor: filenames only, emit regardless
+
+    # Floor reached (filenames only) and still over budget: drop entries rather
+    # than blow the budget, and say how many were dropped so the omission is
+    # visible instead of silent. Past this point the index is too large for the
+    # inject-a-map approach — see README on scale limits.
+    kept, dropped = [], 0
+    used = 0
+    for title, path, rows, skipped in sections:
+        head = f"\n## {title} — {len(rows)}개  `{path}`"
+        kept.append(head)
+        used += len(head) + 1
+        for name, _ in rows:
+            line = f"- {name}"
+            if used + len(line) + 80 > budget:
+                dropped += 1
+                continue
+            kept.append(line)
+            used += len(line) + 1
+    if dropped:
+        kept.append(f"\n(+ {dropped}개는 예산 초과로 생략 — `Glob` 으로 조회)")
+    return "\n".join(kept)
 
 
 def main() -> int:
