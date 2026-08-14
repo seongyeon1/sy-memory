@@ -30,6 +30,55 @@ from pathlib import Path
 MARKER_TMPL = ".sy-memory-saved-{key}"
 ALREADY_SAVED_SIGNALS = ("SY Memory Saved", "SY Memory Skipped")
 
+# Tools whose use means the session actually changed something.
+MUTATING_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+# Phrases that mean "save this" even in a session that touched no files.
+SAVE_INTENT = ("기억해", "기억해줘", "remember", "다음부터", "규칙으로", "잊지", "메모해")
+
+
+def did_substantive_work(transcript_path: str) -> bool:
+    """Decide from the transcript whether asking the model to save is worth a turn.
+
+    Blocking costs a full extra turn — the entire context is re-sent so the model
+    can answer "nothing to save". Measured at ~36k input tokens for a trivial
+    session, roughly 12x the cost of the SessionStart injection. A read-only Q&A
+    session almost never produces a memory, so decide here instead of paying for
+    the model to decide.
+    """
+    try:
+        lines = Path(transcript_path).read_text(encoding="utf-8", errors="replace").splitlines()
+    except (OSError, TypeError):
+        return True  # cannot tell → fall back to asking
+
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        msg = entry.get("message") or {}
+        content = msg.get("content")
+        blocks = content if isinstance(content, list) else []
+
+        if entry.get("type") == "assistant":
+            for b in blocks:
+                if isinstance(b, dict) and b.get("type") == "tool_use" \
+                        and b.get("name") in MUTATING_TOOLS:
+                    return True
+
+        elif entry.get("type") == "user" and not entry.get("isMeta"):
+            # Scan only what the human typed. Scanning the raw transcript would
+            # match the system prompt, which contains words like "remember" and
+            # made this gate fire every time.
+            texts = [content] if isinstance(content, str) else [
+                b.get("text", "") for b in blocks
+                if isinstance(b, dict) and b.get("type") == "text"
+            ]
+            joined = " ".join(texts).lower()
+            if any(p in joined for p in SAVE_INTENT):
+                return True
+
+    return False
+
 
 def writable(d: Path) -> bool:
     """Measure, do not assume. This check is the whole point of defect #1."""
@@ -58,6 +107,17 @@ def main() -> int:
         return 0
     if "<omb>" in raw:  # mid-pipeline step, not a session end
         return 0
+
+    # Cheap gate before the expensive one: if nothing was modified and the user
+    # never asked to remember anything, stay silent rather than buy a turn.
+    if os.environ.get("SY_MEMORY_ALWAYS_ASK") != "1":
+        try:
+            payload = json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            payload = {}
+        tp = payload.get("transcript_path")
+        if tp and not did_substantive_work(tp):
+            return 0
 
     key = os.environ.get("CLAUDE_SESSION_ID") or str(os.getppid())
     marker = Path(tempfile.gettempdir()) / MARKER_TMPL.format(key=key)

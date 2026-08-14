@@ -84,6 +84,25 @@ check "$S5" "" "파이프라인 중간에는 발화 안 함"
 S6="$(echo '{"stop_hook_active":true}' | CLAUDE_SESSION_ID=t-$$-5 python3 "$ROOT/hooks/stop.py")"
 check "$S6" "" "stop_hook_active 루프 방지"
 
+# ---- Stop: 비용 게이트 (턴 하나를 사기 전에 훅이 먼저 판단) ----
+RO_TR="$TMP/readonly.jsonl"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}\n' > "$RO_TR"
+G1="$(printf '{"transcript_path":"%s"}' "$RO_TR" | CLAUDE_SESSION_ID=t-$$-g1 python3 "$ROOT/hooks/stop.py")"
+check "$G1" "" "파일 수정 없는 세션은 저장을 요구하지 않음"
+
+WR_TR="$TMP/wrote.jsonl"
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write"}]}}\n' > "$WR_TR"
+G2="$(printf '{"transcript_path":"%s"}' "$WR_TR" | CLAUDE_SESSION_ID=t-$$-g2 python3 "$ROOT/hooks/stop.py")"
+has "$G2" '"decision": "block"' "파일을 수정한 세션은 저장을 요구함"
+
+IN_TR="$TMP/intent.jsonl"
+printf '{"type":"user","message":{"content":"이거 기억해줘"}}\n' > "$IN_TR"
+G3="$(printf '{"transcript_path":"%s"}' "$IN_TR" | CLAUDE_SESSION_ID=t-$$-g3 python3 "$ROOT/hooks/stop.py")"
+has "$G3" '"decision": "block"' "수정이 없어도 기억 요청이 있으면 저장을 요구함"
+
+G4="$(printf '{"transcript_path":"%s"}' "$RO_TR" | SY_MEMORY_ALWAYS_ASK=1 CLAUDE_SESSION_ID=t-$$-g4 python3 "$ROOT/hooks/stop.py")"
+has "$G4" '"decision": "block"' "SY_MEMORY_ALWAYS_ASK=1 이면 게이트 무시"
+
 RO="$TMP/readonly"; mkdir -p "$RO"; chmod 500 "$RO"
 S7="$(SY_MEMORY_GLOBAL=$RO SY_MEMORY_PROJECT=$RO bash -c "echo '{}' | CLAUDE_SESSION_ID=t-$$-6 python3 '$ROOT/hooks/stop.py'")"
 chmod 700 "$RO"
