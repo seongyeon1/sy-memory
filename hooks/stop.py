@@ -25,7 +25,10 @@ import json
 import os
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
+
+TOOL = Path(__file__).resolve().parent.parent / "scripts" / "memory_tool.py"
 
 MARKER_TMPL = ".sy-memory-saved-{key}"
 ALREADY_SAVED_SIGNALS = ("SY Memory Saved", "SY Memory Skipped")
@@ -156,6 +159,7 @@ def main() -> int:
         if names:
             existing.append(f"**{label}** ({len(names)}개): " + ", ".join(names))
 
+    tool, today = TOOL, date.today().isoformat()
     reason = f"""[SY Memory] 세션을 닫기 전에 이번에 알게 된 것을 남겨라.
 
 ## 먼저 판단하라 — 저장할 것이 있는가
@@ -192,10 +196,32 @@ tags: [관련, 태그]
 1초에 반증할 수 있는 명령을 함께 적어라. 이런 주장은 세션마다 달라지므로 기억하면 안 되고 매번 재야 한다.
 확신이 없으면 적지 마라.
 
-### 마무리
-1. 새 파일을 만들었으면 같은 디렉토리 `INDEX.md`에 **한 줄** 추가 (`- [파일명](파일명) — 한 줄 요약`).
-   INDEX에 없는 파일은 다음 세션에서 보이지 않는다.
-2. `## SY Memory Saved` 아래 저장·수정한 파일 목록을 출력하라.
+### 마무리 — 공유 파일은 도구로 써라 (동시 세션 보호)
+
+같은 프로젝트에서 다른 Claude 세션이 동시에 돌 수 있다. `INDEX.md`와 세션 파일은
+**공유 자원**이라 `Write`로 덮으면 남의 저장분이 사라진다. 실측 유실률 30건 중 29건.
+
+1. **INDEX 등록** — `Edit`/`Write` 쓰지 말고:
+   ```bash
+   python3 {tool} index <메모리디렉토리> <파일명> "<한 줄 요약>"
+   ```
+   INDEX에 없는 파일은 다음 세션 목차에 안 뜬다. 있어도 없는 것이다.
+
+2. **세션 파일** — 덮어쓰지 말고 덧붙여라:
+   ```bash
+   printf '%s' "$본문" | python3 {tool} append <경로>/session_{today}.md
+   ```
+
+3. **중복 발견 시 삭제 금지.** 강등만 하라:
+   ```bash
+   python3 {tool} supersede <디렉토리> <중복본> <정본>
+   ```
+   두 세션이 서로 반대 방향으로 정리하면 **양쪽 다 사라진다.** 실제로 그랬다.
+   이 명령은 정본이 없거나 스텁이면 거부한다.
+
+4. 새로 만든 개별 메모리 파일은 `Write`로 써도 된다 — 이름이 겹치지 않는 한 경합이 없다.
+
+5. `## SY Memory Saved` 아래 저장·수정한 파일 목록을 출력하라.
 
 사용자에게 확인을 묻지 마라."""
 

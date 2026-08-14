@@ -127,6 +127,51 @@ PY
 python3 "$ROOT/scripts/lint_index.py" "$G" "$P" >/dev/null 2>&1
 check "$?" "0" "결함 해소 후 exit 0"
 
+# ---- memory_tool: 동시성 ----
+T="$ROOT/scripts/memory_tool.py"
+CC="$TMP/conc"; mkdir -p "$CC"
+
+for i in $(seq 1 25); do
+  ( python3 "$T" index "$CC" "$(printf 'c%02d.md' "$i")" "요약 $i" >/dev/null 2>&1 ) &
+done; wait
+N=$(grep -c '^- \[' "$CC/INDEX.md" 2>/dev/null || echo 0)
+check "$N" "25" "동시 index 25건 무손실"
+DUP=$(grep -o '](c[0-9]*\.md)' "$CC/INDEX.md" | sort | uniq -d | wc -l | tr -d ' ')
+check "$DUP" "0" "동시 index 중복 항목 없음"
+
+for i in $(seq 1 25); do
+  ( printf '## 조각 %02d\n' "$i" | python3 "$T" append "$CC/session_x.md" >/dev/null 2>&1 ) &
+done; wait
+S=$(grep -c '^## 조각' "$CC/session_x.md" 2>/dev/null || echo 0)
+check "$S" "25" "동시 append 25건 무손실"
+
+# ---- memory_tool: 강등 가드 ----
+DD="$TMP/dd"; mkdir -p "$DD"
+python3 - "$DD" <<'PY'
+import sys
+from pathlib import Path
+d = Path(sys.argv[1])
+(d/"canon.md").write_text("---\ntype: lesson\n---\n# 정본\n" + "본문 "*80, encoding="utf-8")
+(d/"dup.md").write_text("---\ntype: lesson\n---\n# 중복\n짧음\n", encoding="utf-8")
+PY
+python3 "$T" supersede "$DD" dup.md nonexistent.md >/dev/null 2>&1
+check "$?" "1" "정본이 없으면 강등 거부"
+python3 "$T" supersede "$DD" dup.md canon.md >/dev/null 2>&1
+check "$?" "0" "정상 강등 성공"
+if [[ -f "$DD/dup.md" && -f "$DD/canon.md" ]]; then ok "강등 후에도 두 파일 모두 보존"; else bad "강등이 파일을 삭제함"; fi
+has "$(cat "$DD/dup.md")" "superseded_by: canon" "강등본에 정본 포인터 기록"
+python3 "$T" supersede "$DD" canon.md dup.md >/dev/null 2>&1
+check "$?" "1" "정본이 스텁이면 역방향 강등 거부"
+
+# ---- memory_tool: sync ----
+python3 "$T" sync "$DD" >/dev/null 2>&1
+SY=$(grep -c '^- \[' "$DD/INDEX.md")
+check "$SY" "2" "sync 가 색인 누락 파일을 채움"
+rm -f "$DD/dup.md"
+python3 "$T" sync "$DD" >/dev/null 2>&1
+SY2=$(grep -c '^- \[' "$DD/INDEX.md")
+check "$SY2" "1" "sync 가 사라진 파일의 항목을 제거함"
+
 echo
 echo "$PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]
