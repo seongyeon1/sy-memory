@@ -17,7 +17,15 @@ from pathlib import Path
 
 BENCH = Path(__file__).resolve().parent
 RESULTS = BENCH / "results"
-PROBES = [json.loads(l) for l in (BENCH / "probes.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+PROBES_PATH = BENCH / "probes.jsonl"
+if not PROBES_PATH.exists():
+    sys.exit(
+        f"{PROBES_PATH} 없음.\n"
+        f"  cp {BENCH / 'probes.example.jsonl'} {PROBES_PATH}\n"
+        f"본인 메모리에 실제로 있는 내용으로 프로브를 고쳐 쓸 것 — "
+        f"예시 그대로 돌리면 전부 미적중이 나온다."
+    )
+PROBES = [json.loads(l) for l in PROBES_PATH.read_text(encoding="utf-8").splitlines() if l.strip()]
 
 RECALL_SIGNALS = [r"\bsy:recall\b", r"Skill\(['\"]sy:recall['\"]\)", r"sy 메모리.{0,20}검색"]
 # A signal this short proves nothing on its own — a generic word can appear for

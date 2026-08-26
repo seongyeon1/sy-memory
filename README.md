@@ -180,8 +180,11 @@ cd sy-memory
 ./install.sh --user   # 모든 프로젝트  (~/.claude/settings.json)
 ```
 
-스킬까지 쓰려면 `cp -r skills/* .claude/skills/`.
-제거는 `./install.sh --uninstall` — 훅만 지우고 메모리 파일은 건드리지 않는다.
+훅 등록과 스킬 링크(`sy-recall`·`sy-save`)까지 한 번에 한다. 재실행해도 안전하고,
+다른 훅·권한 설정은 보존한다.
+
+제거는 `./install.sh --uninstall` — 자기가 만든 훅과 심볼릭 링크만 지우고
+**메모리 파일은 건드리지 않는다.**
 
 의존성 없음 (python3 stdlib + bash).
 
@@ -209,19 +212,21 @@ INDEX 누락(orphan), 실재하지 않는 `[[링크]]`, 중복 항목, 대상 �
 길이 초과는 경고로만 알린다 — 어차피 주입 시 잘린다.
 
 ```bash
-bash tests/test_hooks.sh    # 25개, 모델 호출 없음
+bash tests/test_hooks.sh    # 39개, 모델 호출 없음
 ```
 
 ## 구성
 
 ```
 hooks/session_start.py   목차 주입 (예산 자동 조정)
-hooks/stop.py            세션 종료 시 저장 요청
+hooks/stop.py            세션 종료 시 저장 요청 (비용 게이트 포함)
 skills/sy-recall/        목차 → 본문 조회
 skills/sy-save/          저장 규칙
-scripts/lint_index.py    무결성 점검
-install.sh               훅 등록 (멱등, 다른 훅 보존)
-tests/test_hooks.sh      회귀 테스트
+scripts/memory_tool.py   동시 세션 안전 쓰기 (index·append·sync·supersede)
+scripts/lint_index.py    무결성 점검 (orphan·dangling·중복)
+install.sh               훅 등록 + 스킬 링크 (멱등, 다른 훅 보존)
+tests/test_hooks.sh      회귀 테스트 39종
+bench/                   D1 측정 도구와 방법론
 ```
 
 ## Stop 훅이 하지 않는 것
@@ -343,7 +348,16 @@ D1′가 0.45 → 0.85로 오른 것(20개 중 8개에서 메모리가 답에 �
 - 프로브 일부는 대상 저장소의 `CLAUDE.md`에도 있는 내용을 묻는다. 그래서 대조군 없이는
   메모리 귀속을 주장할 수 없다 — `bench/` 참조.
 - 한국어 환경에서만 측정했다. 키워드 우위는 언어 특성일 수 있다.
-- `verify:` 재검증은 **지시**이지 강제가 아니다. 모델이 건너뛸 수 있다.
+
+### 아직 안 고친 것
+
+- **도구 사용을 강제하지 못한다.** 훅과 스킬이 `memory_tool.py`를 쓰라고 지시할 뿐,
+  모델이 `Write`로 `INDEX.md`를 덮는 것을 막을 수단이 없다. 잠금은 도구를 쓸 때만 걸린다.
+- **`verify:`는 지시이지 실행이 아니다.** 목차에 "재검증 필요"로 표시되고 조회 스킬이
+  실행하라고 말하지만, **아무도 그 명령을 자동으로 돌리지 않는다.** 모델이 건너뛰면 그만이다.
+- **개별 메모리 파일의 동시 편집은 여전히 취약하다.** A가 읽고 B가 고치고 A가 쓰면
+  B의 변경이 사라진다. 보호되는 것은 `INDEX.md`와 세션 파일뿐이다.
+- **POSIX 전용**(`fcntl`). Windows에서는 잠금이 동작하지 않는다.
 
 ## 라이선스
 

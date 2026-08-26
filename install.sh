@@ -75,11 +75,38 @@ settings_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", 
 print(f"[install] {action} → {settings_path}")
 PY
 
-chmod +x "$ROOT/hooks/session_start.py" "$ROOT/hooks/stop.py" "$ROOT/scripts/lint_index.py"
+chmod +x "$ROOT/hooks/session_start.py" "$ROOT/hooks/stop.py" \
+        "$ROOT/scripts/lint_index.py" "$ROOT/scripts/memory_tool.py" \
+        "$ROOT/bench/runner_sandbox.sh" 2>/dev/null || true
 
 if [[ "$ACTION" == "install" ]]; then
   mkdir -p "${SY_MEMORY_GLOBAL:-$HOME/.sy/memory}"
   [[ "$SCOPE" == "project" ]] && mkdir -p "${SY_MEMORY_PROJECT:-$PWD/.sy-memory}"
+
+  # Skills are part of the thing, not an optional extra — copy them instead of
+  # printing a command and hoping.
+  SKILL_DEST="$(dirname "$SETTINGS")/skills"
+  mkdir -p "$SKILL_DEST"
+  for skill in "$ROOT"/skills/*/; do
+    name="$(basename "$skill")"
+    if [[ -e "$SKILL_DEST/$name" && ! -L "$SKILL_DEST/$name" ]]; then
+      echo "[install] 건너뜀 (이미 있음): $SKILL_DEST/$name"
+    else
+      rm -f "$SKILL_DEST/$name"
+      ln -s "$skill" "$SKILL_DEST/$name"
+      echo "[install] 스킬 링크: $name"
+    fi
+  done
+
   echo "[install] 완료. 새 세션부터 메모리 목차가 주입됩니다."
-  echo "[install] 스킬을 쓰려면: cp -r $ROOT/skills/* .claude/skills/"
+else
+  SKILL_DEST="$(dirname "$SETTINGS")/skills"
+  for skill in "$ROOT"/skills/*/; do
+    link="$SKILL_DEST/$(basename "$skill")"
+    # Only remove our own symlinks; never touch a real directory someone wrote.
+    if [[ -L "$link" && "$(readlink "$link")" == "$ROOT"/* ]]; then
+      rm -f "$link"; echo "[install] 스킬 링크 제거: $(basename "$skill")"
+    fi
+  done
+  echo "[install] 메모리 파일은 그대로 둡니다."
 fi

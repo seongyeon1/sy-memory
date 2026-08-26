@@ -37,9 +37,32 @@ cleanup() { rm -rf "$SANDBOX"; }
 trap cleanup EXIT INT TERM
 
 # ---- build the sandbox ----
+# Source dirs honour the same env vars the hooks use. Hardcoding ~/.sy/memory
+# here meant a user with memory elsewhere measured an empty corpus.
+SRC_PROJECT="${SY_MEMORY_PROJECT:-$HARNESS_DIR/.sy-memory}"
+SRC_GLOBAL="${SY_MEMORY_GLOBAL:-$HOME/.sy/memory}"
+
 cp "$HARNESS_DIR/CLAUDE.md" "$SANDBOX/" 2>/dev/null || true
-cp -R "$HARNESS_DIR/.sy-memory" "$SANDBOX/.sy-memory"
-cp -R "$HOME/.sy/memory" "$SANDBOX/global-memory"
+
+# Fail loudly. Without this the script happily ran 20 expensive probes against a
+# corpus that was never copied and reported the result as if it meant something
+# — a benchmark that silently measures nothing is worse than one that crashes.
+copied=0
+if [[ -d "$SRC_PROJECT" ]]; then
+  cp -R "$SRC_PROJECT" "$SANDBOX/.sy-memory" && copied=$((copied+1))
+else
+  echo "[sandbox] 프로젝트 메모리 없음: $SRC_PROJECT" >&2
+fi
+if [[ -d "$SRC_GLOBAL" ]]; then
+  cp -R "$SRC_GLOBAL" "$SANDBOX/global-memory" && copied=$((copied+1))
+else
+  echo "[sandbox] 전역 메모리 없음: $SRC_GLOBAL" >&2
+fi
+if [[ "$MODE" != "A0" && "$copied" -eq 0 ]]; then
+  echo "[sandbox] 중단 — 복사된 메모리가 없어 $MODE 조건이 성립하지 않는다." >&2
+  echo "[sandbox] SY_MEMORY_PROJECT / SY_MEMORY_GLOBAL 로 경로를 지정하라." >&2
+  exit 2
+fi
 mkdir -p "$SANDBOX/.claude"
 
 # Only SessionStart. The Stop hook would overwrite answers with a save report.
